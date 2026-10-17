@@ -1,0 +1,279 @@
+:root {
+  /* Brand Colors - Blue & White with Yellow & Green accents */
+  --primary-blue: #1e3a8a; /* Tailwind blue-900 */
+  --primary-blue-light: #3b82f6; /* Tailwind blue-500 */
+  --primary-white: #ffffff;
+  --bg-color: #f0f4f8; /* Soft blueish white */
+  
+  --accent-yellow: #f59e0b; /* Tailwind amber-500 */
+  --accent-green: #10b981; /* Tailwind emerald-500 */
+  
+  --text-main: #1f2937;
+  --text-light: #6b7280;
+  --border-color: #e5e7eb;
+  
+  /* UI Metrics */
+  --border-radius: 12px;
+  --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  padding: 16px;
+  gap: 16px;
+}
+
+/* PDF Panel */
+.pdf-panel {
+  flex: 6;
+  background-color: var(--primary-white);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.pdf-header {
+  padding: 12px 20px;
+  background-color: var(--primary-blue);
+  color: var(--primary-white);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pdf-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.upload-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.upload-btn {
+  background-color: var(--primary-blue-light);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  border: none;
+  transition: all 0.2s;
+}
+
+.upload-btn:hover {
+  background-color: var(--primary-blue);
+  transform: translateY(-2px);
+}
+
+.upload-input {
+  display: none;
+}
+
+/* Chat Panel */
+.chat-panel {
+  flex: 4;
+  background-color: var(--primary-white);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.chat-header {
+  padding: 12px 20px;
+  background-color: var(--primary-white);
+  color: var(--primary-blue);
+  font-weight: 600;
+  border-bottom: 2px solid var(--bg-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--accent-green);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background-color: #fafbfd;
+}
+
+.message {
+  max-width: 85%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  line-height: 1.5;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.message.user {
+  align-self: flex-end;
+  background-color: var(--primary-blue);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.message.ai {
+  align-self: flex-start;
+  background-color: var(--primary-white);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.chat-input-area {
+  padding: 16px;
+  background-color: var(--primary-white);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 12px;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  outline: none;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.chat-input:focus {
+  border-color: var(--primary-blue-light);
+}
+
+.send-btn {
+  background-color: var(--primary-blue-light);
+  color: white;
+  border: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.send-btn:hover {
+  background-color: var(--primary-blue);
+}
+
+.send-btn:disabled {
+  background-color: var(--text-light);
+  cursor: not-allowed;
+}
+
+/* Utility Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Markdown highlights inside chat */
+.ai-highlight-ref {
+  color: var(--accent-yellow);
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* PDF text layer positioning and highlights styling */
+.react-pdf__Page {
+  position: relative !important;
+  transition: box-shadow 0.5s ease, transform 0.5s ease;
+}
+
+.react-pdf__Page canvas {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.react-pdf__Page__textContent,
+.textLayer {
+  position: absolute !important;
+  z-index: 3 !important;
+}
+
+/* Highlight style with glowing outline and pulse */
+@keyframes highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+.react-pdf__Page__textContent span[data-highlighted="true"],
+.textLayer span[data-highlighted="true"] {
+  background-color: rgba(251, 191, 36, 0.65) !important; /* Amber yellow, semi-transparent */
+  border-bottom: 2px solid #f59e0b !important;
+  border-radius: 2px;
+  animation: highlight-pulse 2s infinite;
+}
+
+/* Glowing outline for the active page containing the match */
+@keyframes page-glow {
+  0% {
+    box-shadow: 0 0 0 0px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px rgba(59, 130, 246, 0.8);
+  }
+  100% {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+}
+
+.react-pdf__Page.page-glow-active {
+  animation: page-glow 2.5s ease-in-out forwards;
+  outline: 3px solid var(--primary-blue-light) !important;
+  outline-offset: 4px;
+  transform: scale(1.01);
+}
+
