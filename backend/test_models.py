@@ -1,14 +1,16 @@
+"""List Gemini models with the same SDK used by the application."""
 import os
-import google.generativeai as genai
+from pathlib import Path
 from dotenv import load_dotenv
+from google import genai
 
-load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-try:
-    print("Available models:")
-    for m in genai.list_models():
-        if 'embedContent' in m.supported_generation_methods:
-            print(f"- {m.name}")
-except Exception as e:
-    print("Error:", e)
+def main():
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+    with genai.Client(api_key=os.getenv("GEMINI_API_KEY")) as client:
+        for model in client.models.list():
+            print(model.name)
+
+
+if __name__ == "__main__":
+    main()

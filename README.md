@@ -1,104 +1,195 @@
-# PDF 智慧搜尋與高光定位系統 - 專案交接與部署說明 (README.md)
+# PDF Insight Agent
 
-## 1. 開發環境與版本需求
+Ask questions about a PDF, summarize its contents, and inspect highlighted source
+blocks beside the conversation. A LangGraph workflow separates planning, answering,
+summarization and review, while SQLite preserves conversation memory across restarts.
 
-接收專案的同仁在啟動前，請先確認本地端安裝了以下環境：
+## Features
 
-* **Python 版本**：建議 **Python 3.10 或 3.11** (必須高於 3.10，以支援最新的型態註解與套件相容性)。
-* **Node.js 版本**：建議 **Node.js 18.x 或 20.x (LTS)**，並自帶 **npm 9.x+**。
+- PDF question answering with source citations and page navigation
+- Document Summary Agent with batched processing for longer documents
+- Conversation Summarizer that compresses older messages and preserves recent turns
+- Persistent, document-scoped conversation memory and a New Chat action
+- Live workflow progress and expandable execution records
+- Validated model output, citation checks and one bounded answer revision
+- Content-based document caching and coordinate-based source highlighting
+- Gemini and OpenAI-compatible Gemma endpoint support
 
----
+## Workflow
 
-## 2. 安裝與啟動步驟
+```mermaid
+flowchart TD
+    START([New question]) --> begin[Restore memory and reset turn]
+    begin --> memory{Compress older conversation?}
+    memory -- Yes --> summarize_memory[Conversation Summarizer]
+    memory -- No --> planner[Planner]
+    summarize_memory --> planner
+    planner -- Clarify --> finalize[Finalize response]
+    planner -- QA or document summary --> collect[Collect source blocks]
+    collect -- QA --> answer[Answer Agent]
+    collect -- Summary --> document_summary[Document Summary Agent]
+    answer --> review[Validate citations and review claims]
+    document_summary --> review
+    review -- Passed --> finalize
+    review -- First failure --> revise[Revise once]
+    revise --> review
+    review -- Second failure --> finalize
+    finalize --> END([Save conversation and return result])
+```
 
-交接同仁取得專案壓縮檔並解壓縮後，請依照以下步驟啟動服務：
+The model chooses source IDs; the backend supplies their text and coordinates.
+Conversation memory helps interpret follow-up questions. PDF claims still require
+original document evidence. The interface shows workflow activity and validation
+outcomes rather than private model reasoning.
 
-### 第一步：設定後端 (FastAPI)
+See [Agent Logic and Learning Guide](docs/AGENT_LOGIC.md) for node contracts,
+memory lifecycle, source handling and extension instructions. The generated
+[LangGraph topology](docs/workflow.mmd) mirrors the compiled workflow.
 
-1. **開啟終端機並進入後端目錄**：
-   ```bash
-   cd backend
-   ```
+## Stack
 
-2. **建立 Python 虛擬環境**：
-   ```bash
-   python -m venv venv
-   ```
+- React, Vite and React-PDF
+- FastAPI and PyMuPDF
+- LangGraph with async SQLite checkpoints
+- LangChain Gemini integration or an HTTP Gemma adapter
 
-3. **啟動虛擬環境**：
-   * **Windows (PowerShell)**:
-     ```powershell
-     .\venv\Scripts\Activate.ps1
-     ```
-   * **Windows (CMD)**:
-     ```cmd
-     .\venv\Scripts\activate.bat
-     ```
-   * **macOS / Linux**:
-     ```bash
-     source venv/bin/activate
-     ```
+## Run Locally
 
-4. **安裝後端套件**：
-   ```bash
-   pip install -r requirements.txt
-   ```
+Use Python 3.11+ and a Node.js version compatible with Vite 8 (20.19+ or 22.12+).
 
-5. **設定 `.env` 環境變數**：
-   請確認 `backend/.env` 檔案存在，並且填寫了有效的 **Gemini API Key**：
-   ```env
-   LLM_PROVIDER=gemini
-   GEMINI_API_KEY=您的_GEMINI_API_KEY
-   ```
+### Backend
 
-6. **啟動後端服務**：
-   ```bash
-   uvicorn main:app --reload
-   ```
-   * 啟動成功後，後端服務會運行在 `http://127.0.0.1:8000`。
-   * 您可以開啟 `http://127.0.0.1:8000/docs` 查看 API 互動式文件。
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
 
----
+Edit `.env` and supply your Gemini API key:
 
-### 第二步：設定前端 (React + Vite)
+```dotenv
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_api_key
+GEMINI_MODEL=gemini-2.5-flash
+```
 
-1. **開啟另一個終端機視窗並進入前端目錄**：
-   ```bash
-   cd frontend
-   ```
+For Gemma, set `LLM_PROVIDER=gemma`, `GEMMA_API_URL`, `GEMMA_API_KEY` and
+`GEMMA_MODEL`. The endpoint must support chat messages and JSON output.
 
-2. **安裝前端相依套件**：
-   ```bash
-   npm install
-   ```
+```bash
+uvicorn main:app --reload
+```
 
-3. **啟動前端開發伺服器**：
-   ```bash
-   npm run dev
-   ```
-   * 啟動成功後，終端機會顯示本地連結，通常為 `http://localhost:5173/`。
-   * 在瀏覽器中打開該網址即可開始使用系統。
+The API runs at `http://localhost:8000`; API documentation is at
+`http://localhost:8000/docs`.
 
----
+### Frontend
 
-## 3. 開發輔助偵錯工具
+In a second terminal:
 
-後端提供了兩個測試指令碼，方便同仁在修改程式碼時進行快速驗證：
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-1. **測試 API 金鑰與連線** (`test_models.py`)：
-   在後端虛擬環境下執行此檔案，可確認 `GEMINI_API_KEY` 是否有效，並列出可用的 Gemini 模型：
-   ```bash
-   python test_models.py
-   ```
-2. **終端機問答與高亮比對偵錯** (`debug_chat.py`)：
-   如果不希望每次都透過瀏覽器介面測試，可以直接在後端虛擬環境下運行此腳本。它能模擬前端的長句拆分與匹配邏輯，並直接在命令列中顯示 Gemini 的問答結果、高亮片段以及在 PDF 中的頁碼定位：
-   ```bash
-   python debug_chat.py
-   ```
+Open the URL printed by Vite, normally `http://localhost:5173`.
+For a different backend, configure `VITE_API_BASE_URL` in `frontend/.env.local`.
+Update backend `CORS_ORIGINS` if the frontend origin changes.
 
----
+Upload a PDF, ask a question, or select **摘要文件** to create a document summary.
+Source buttons jump to highlighted blocks. **新聊天** starts fresh conversation memory.
+Existing uploads from the earlier prototype should be uploaded again to build the
+new content-addressed cache and source coordinates.
 
-## 4. 注意事項 (Precautions)
+## Configuration
 
-**定位漂移與高亮異常**：
-   本系統已實現了 PDF 透明文字層的「葉子節點 Span 篩選」及「非同步佈局延遲定位」技術（詳見 [SPEC.md]），若同仁日後修改了前端 React PDF 套件或 CSS 定位，請特別注意是否破壞了雙層渲染層級 (`z-index`)，否則可能導致高亮標記在畫面上完全隱形或滾動位置偏差。
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LLM_TIMEOUT_SECONDS` | `90` | Timeout per provider request |
+| `MEMORY_SUMMARY_TRIGGER_CHARS` | `16000` | Conversation compression threshold |
+| `MEMORY_KEEP_TURNS` | `4` | Recent complete turns retained alongside the new question |
+| `MAX_SUMMARY_CHARS` | `200000` | Full-document summary input limit |
+| `CORS_ORIGINS` | localhost and 127.0.0.1 on port 5173 | Allowed frontend origins |
+
+Summaries trigger only when enough older messages are available to compress.
+Conversation summaries are bounded; the threshold is character-based, not an exact
+token count. Uploads are limited to 25 MB. Long-document QA uses a local lexical
+retriever with a 24,000-character source budget. Full-document summaries process
+all source blocks in batches or explicitly report that the size limit was exceeded.
+
+## Project Layout
+
+```text
+backend/
+  agent/state.py                 State and validated model contracts
+  agent/graph.py                 Nodes, routing, review and summarization
+  agent/retrieval.py             Local retrieval and summary batching
+  services/document_service.py  Content-addressed storage
+  services/pdf_service.py       Text and source coordinates
+  services/llm_service.py       Async provider adapter
+  main.py                      Upload, chat, stream and history APIs
+  tests/test_workflow.py        Offline regression tests
+frontend/src/
+  components/ChatBox.jsx        Conversation, memory and progress UI
+  components/PdfViewer.jsx      Source overlays and navigation
+  stream.js                    Incremental SSE parser
+```
+
+Runtime PDFs and checkpoints are stored under `backend/data/` and excluded from Git.
+API keys and local environments are also excluded. The current-document shortcut
+is global to this local installation; actual chat requests explicitly identify both
+the document and conversation.
+
+## API
+
+- `POST /api/upload`: upload a PDF; returns its document ID and relative file URL
+- `GET /api/current-file`: most recently selected document
+- `GET /api/documents/{document_id}/file`: read a stored PDF
+- `POST /api/chat`: execute the workflow and return JSON
+- `POST /api/chat/stream`: execute the same workflow with SSE events
+- `GET /api/threads/{thread_id}?document_id=...`: restore recent conversation
+
+Both chat endpoints require `question`, a SHA-256 `document_id` and a UUID
+`thread_id`. Streaming events are `status`, `result` or `error`. Only the final
+verified response is shown as an answer; failed verification returns an explicit
+unverified response without highlights.
+
+## Checks
+
+From `backend`:
+
+```bash
+venv/bin/python -m unittest discover -s tests -v
+```
+
+From `frontend`:
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+Tests use a fake model and exercise the actual workflow, PDF extraction, SQLite
+persistence, citation rejection and SSE parsing without sending documents to a
+model provider. They do not establish live model accuracy.
+
+For interactive API debugging, start the backend, upload a PDF in the browser,
+and run `python debug_chat.py` from `backend`.
+
+## Limitations
+
+- This is a local prototype without authentication or per-user ownership checks.
+  Run a single API worker; production concurrency requires shared coordination.
+- Source highlights cover extracted blocks rather than exact answer sentences.
+- Scanned PDFs need OCR; complex tables and multi-column layouts may need better parsing.
+- Lexical retrieval may miss semantic matches; it is not embedding-based retrieval.
+- Model review reduces unsupported answers but cannot guarantee factual correctness.
+- Memory is scoped to a chat and document; cross-chat profile memory is not implemented.
+- Older checkpoints remain on disk after conversation compression. Retention and
+  deletion controls are not implemented.
+- Execution records are kept in the current UI session; reload restores recent
+  conversation, summary presence and the latest source selection.

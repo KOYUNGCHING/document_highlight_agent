@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import PdfViewer from './components/PdfViewer';
 import ChatBox from './components/ChatBox';
 import './index.css';
+import { apiUrl } from './api';
 
 function App() {
   const [pdfFileUrl, setPdfFileUrl] = useState(null);
-  const [highlights, setHighlights] = useState([]);
-  const [targetPage, setTargetPage] = useState(null);
+  const [documentId, setDocumentId] = useState(null);
+  const [citations, setCitations] = useState([]);
+  const [primaryId, setPrimaryId] = useState(null);
+  const [focusVersion, setFocusVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -15,9 +18,10 @@ function App() {
   useEffect(() => {
     const fetchCurrentFile = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/api/current-file');
+        const response = await axios.get(apiUrl('/api/current-file'));
         if (response.data && response.data.url) {
-          setPdfFileUrl(response.data.url);
+          setPdfFileUrl(apiUrl(response.data.url));
+          setDocumentId(response.data.document_id);
         }
       } catch (error) {
         console.error("Error fetching current file:", error);
@@ -30,31 +34,36 @@ function App() {
     const file = event.target.files[0];
     if (!file) return;
 
-    setHighlights([]);
+    setCitations([]);
+    setPrimaryId(null);
     setIsUploading(true);
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/upload', formData, {
+      const response = await axios.post(apiUrl('/api/upload'), formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       // Set the pdf file URL returned by backend (static path)
-      setPdfFileUrl(response.data.url);
+      setPdfFileUrl(apiUrl(response.data.url));
+      setDocumentId(response.data.document_id);
     } catch (error) {
       console.error("Error uploading file:", error);
-      alert("上傳失敗，請確認後端是否正常運作");
+      alert(error.response?.data?.detail || "上傳失敗，請確認後端是否正常運作");
       setPdfFileUrl(null);
+      setDocumentId(null);
     } finally {
       setIsUploading(false);
+      event.target.value = '';
     }
   };
 
-  const handleHighlightsChange = (newHighlights, newTargetPage) => {
-    setHighlights(newHighlights);
-    setTargetPage(newTargetPage);
-  };
+  const handleCitationsChange = useCallback((nextCitations, nextPrimaryId) => {
+    setCitations(nextCitations || []);
+    setPrimaryId(nextPrimaryId);
+    setFocusVersion(value => value + 1);
+  }, []);
 
   return (
     <div className="app-container">
@@ -84,7 +93,7 @@ function App() {
             </div>
           )}
           {pdfFileUrl && !isUploading && (
-            <PdfViewer fileUrl={pdfFileUrl} highlights={highlights} targetPage={targetPage} />
+            <PdfViewer key={documentId} fileUrl={pdfFileUrl} citations={citations} primaryId={primaryId} focusVersion={focusVersion} />
           )}
           <input 
             type="file" 
@@ -97,10 +106,10 @@ function App() {
       </div>
 
       {/* Right Panel: Chat Box */}
-      <ChatBox 
-        onHighlightsChange={handleHighlightsChange} 
-        isPdfUploaded={!!pdfFileUrl && !isUploading} 
-      />
+      {documentId ? <ChatBox key={documentId} documentId={documentId}
+        onCitationsChange={handleCitationsChange} disabled={isUploading} /> :
+        <div className="chat-panel"><div className="chat-header">AI 文件助理</div>
+          <div className="chat-messages">請先上傳 PDF 文件。</div></div>}
     </div>
   );
 }

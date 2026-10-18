@@ -1,107 +1,141 @@
-import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import { useState, useRef, useEffect } from 'react';
+import { apiUrl } from '../api';
+import { readEvents } from '../stream';
 
-const ChatBox = ({ onHighlightsChange, isPdfUploaded }) => {
-    const [messages, setMessages] = useState([{
-        sender: 'ai',
-        text: '您好！我是您的 PDF 智慧助理。請先上傳或選擇文件後，即可開始詢問關於文件的內容。'
-    }]);
-    const [inputValue, setInputValue] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef(null);
+const greeting = { sender: 'ai', text: '您好！您可以詢問文件內容，或按「摘要文件」整理重點。' };
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+export default function ChatBox({ documentId, onCitationsChange, disabled }) {
+    const storageKey = `pdf-agent-thread:${documentId}`;
+    const [threadId, setThreadId] = useState(() => {
+        const saved = localStorage.getItem(storageKey);
+        if (saved && /^[0-9a-f-]{36}$/i.test(saved)) return saved;
+        const id = crypto.randomUUID();
+        localStorage.setItem(storageKey, id);
+        return id;
+    });
+    const [messages, setMessages] = useState([greeting]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [restoring, setRestoring] = useState(true);
+    const [steps, setSteps] = useState([]);
+    const [hasSummary, setHasSummary] = useState(false);
+    const bottomRef = useRef(null);
+    const controllerRef = useRef(null);
+    const sendingRef = useRef(false);
 
     useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+        const controller = new AbortController();
+        fetch(apiUrl(`/api/threads/${threadId}?document_id=${documentId}`), { signal: controller.signal })
+            .then(async response => {
+                if (!response.ok) throw new Error('無法恢復對話記憶');
+                return response.json();
+            })
+            .then(data => {
+                const restored = [...data.messages];
+                const last = restored.length - 1;
+                if (data.result && restored[last]?.sender === 'ai' && restored[last]?.text === data.result.answer) {
+                    restored[last] = { ...restored[last], citations: data.result.citations };
+                }
+                setMessages(restored.length ? restored : [greeting]);
+                setHasSummary(data.has_summary);
+                if (data.result) onCitationsChange(data.result.citations, data.result.primary_citation_id);
+            })
+            .catch(error => {
+                if (error.name !== 'AbortError') setMessages([greeting, { sender: 'ai', text: error.message }]);
+            })
+            .finally(() => { if (!controller.signal.aborted) setRestoring(false); });
+        return () => controller.abort();
+    }, [threadId, documentId, onCitationsChange]);
 
-    const handleSend = async () => {
-        if (!inputValue.trim()) return;
+    useEffect(() => () => controllerRef.current?.abort(), []);
+    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, steps]);
 
-        const userMsg = { sender: 'user', text: inputValue };
-        setMessages(prev => [...prev, userMsg]);
-        setInputValue('');
-        setIsLoading(true);
+    function newChat() {
+        const id = crypto.randomUUID();
+        localStorage.setItem(storageKey, id);
+        setMessages([greeting]);
+        setSteps([]);
+        setHasSummary(false);
+        setRestoring(true);
+        onCitationsChange([], null);
+        setThreadId(id);
+    }
 
+    async function send(question = input) {
+        if (!question.trim() || sendingRef.current || disabled || restoring) return;
+        sendingRef.current = true;
+        controllerRef.current = new AbortController();
+        const trace = [];
+        setInput('');
+        setLoading(true);
+        setSteps([]);
+        setMessages(previous => [...previous, { sender: 'user', text: question }]);
+        onCitationsChange([], null);
         try {
-            const response = await axios.post('http://localhost:8000/api/chat', {
-                question: userMsg.text
+            const response = await fetch(apiUrl('/api/chat/stream'), {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question, document_id: documentId, thread_id: threadId }),
+                signal: controllerRef.current.signal,
             });
-            
-            const aiMsg = { 
-                sender: 'ai', 
-                text: response.data.answer 
-            };
-            
-            setMessages(prev => [...prev, aiMsg]);
-            
-            if (response.data.highlights && response.data.highlights.length > 0) {
-                onHighlightsChange(response.data.highlights, response.data.target_page);
-            } else {
-                onHighlightsChange([], null);
-            }
-            
+            await readEvents(response, event => {
+                if (event.type === 'status') {
+                    trace.push(event);
+                    setSteps([...trace]);
+                    if (event.stage === 'memory_summarized') setHasSummary(true);
+                } else if (event.type === 'result') {
+                    setMessages(previous => [...previous, { sender: 'ai', text: event.answer,
+                        citations: event.citations, primaryId: event.primary_citation_id, steps: [...trace] }]);
+                    onCitationsChange(event.citations, event.primary_citation_id);
+                }
+            });
         } catch (error) {
-            console.error("Error sending message:", error);
-            setMessages(prev => [...prev, { sender: 'ai', text: '抱歉，發生了錯誤，請確認後端服務是否正常運作。' }]);
+            if (error.name !== 'AbortError') {
+                setMessages(previous => [...previous, { sender: 'ai', text: error.message, steps: [...trace] }]);
+            }
         } finally {
-            setIsLoading(false);
+            sendingRef.current = false;
+            setLoading(false);
         }
-    };
+    }
 
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleSend();
-        }
-    };
-
+    const busy = loading || restoring || disabled;
     return (
         <div className="chat-panel">
-            <div className="chat-header">
-                <div className="status-dot"></div>
-                AI 文件助理
+            <div className="chat-header"><span className="status-dot" />AI 文件助理</div>
+            <div className="chat-toolbar">
+                <button disabled={busy} onClick={() => send('請摘要整份文件，整理重點、重要數值、適用條件與限制。')}>摘要文件</button>
+                <button disabled={busy} onClick={newChat}>新聊天</button>
+                <span>{hasSummary ? '對話記憶已壓縮' : '對話記憶已啟用'}</span>
             </div>
-            
-            <div className="chat-messages">
-                {messages.map((msg, index) => (
-                    <div key={index} className={`message ${msg.sender}`}>
-                        {msg.text}
+            <div className="chat-messages" aria-live="polite">
+                {messages.map((message, index) => (
+                    <div key={index} className={`message ${message.sender}`}>
+                        <div className="message-text">{message.text}</div>
+                        {!!message.citations?.length && <div className="citation-list">
+                            {message.citations.map(citation => <button key={citation.block_id}
+                                onClick={() => onCitationsChange(message.citations, citation.block_id)}
+                                title={citation.text}>第 {citation.page} 頁 · {citation.block_id}</button>)}
+                        </div>}
+                        {!!message.steps?.length && <details className="agent-trace">
+                            <summary>查看執行過程</summary>
+                            <ol>{message.steps.map((step, i) => <li key={i}>{step.label}</li>)}</ol>
+                        </details>}
                     </div>
                 ))}
-                {isLoading && (
-                    <div className="message ai">
-                        <span style={{ fontStyle: 'italic', color: 'var(--text-light)' }}>思考中...</span>
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
+                {restoring && <div className="message ai">正在恢復對話記憶…</div>}
+                {loading && <div className="message ai agent-progress">
+                    <strong>處理進度</strong>
+                    <ol>{steps.map((step, i) => <li key={i}>{step.label}</li>)}</ol>
+                    <span>處理中…</span>
+                </div>}
+                <div ref={bottomRef} />
             </div>
-
-            <div className="chat-input-area">
-                <input
-                    type="text"
-                    className="chat-input"
-                    placeholder={isPdfUploaded ? "輸入您的問題... (例如：皮肌移位倍數？)" : "請先上傳 PDF"}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={!isPdfUploaded || isLoading}
-                />
-                <button 
-                    className="send-btn" 
-                    onClick={handleSend}
-                    disabled={!isPdfUploaded || isLoading || !inputValue.trim()}
-                >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
-                </button>
-            </div>
+            <form className="chat-input-area" onSubmit={event => { event.preventDefault(); send(); }}>
+                <input className="chat-input" aria-label="文件問題" placeholder="詢問文件，或接著追問…"
+                    onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault(); }}
+                    value={input} onChange={event => setInput(event.target.value)} disabled={busy} />
+                <button className="send-btn" disabled={busy || !input.trim()} aria-label="送出問題">➤</button>
+            </form>
         </div>
     );
-};
-
-export default ChatBox;
+}

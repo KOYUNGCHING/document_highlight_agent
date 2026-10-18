@@ -277,3 +277,22 @@ body {
   transform: scale(1.01);
 }
 
+
+/* Agent workflow and evidence navigation */
+.chat-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); }
+.chat-toolbar button, .citation-list button { background: #eff6ff; border: 1px solid #bfdbfe; color: var(--primary-blue); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+.chat-toolbar button:disabled { opacity: .5; cursor: default; }
+.chat-toolbar span { font-size: 12px; color: var(--text-light); }
+.message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.citation-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.agent-trace { font-size: 12px; color: var(--text-light); margin-top: 12px; }
+.agent-trace summary { cursor: pointer; }
+.agent-trace ol, .agent-progress ol { padding-left: 20px; margin: 8px 0; }
+.agent-progress { font-size: 13px; }
+.pdf-scroll { height: 100%; overflow-y: auto; padding: 12px; }
+.pdf-page-wrap { position: relative; width: fit-content; margin: 0 auto 12px; box-shadow: var(--box-shadow); }
+.citation-overlay { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.citation-rect { position: absolute; background: rgba(251, 191, 36, .28); border: 1px solid #f59e0b; }
+.citation-primary { background: rgba(251, 191, 36, .42); outline: 2px solid #f59e0b; }
+.chat-input { min-width: 0; }
+@media (max-width: 760px) { .app-container { flex-direction: column; padding: 6px; gap: 6px; } .pdf-panel { flex: 4; } .chat-panel { flex: 6; } .pdf-panel, .chat-panel { min-width: 0; min-height: 0; } .chat-messages { padding: 10px; } .message { max-width: 100%; } }
